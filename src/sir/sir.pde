@@ -24,24 +24,32 @@ int time_to_recovery = 1;                                               // Time 
 float[] p_transmission_cases = new float[]{1.0, .5, 0, 1.0, .5, 0};     // p_transmission for cases 1-6.
 int[] time_to_recovery_cases = new int[]{100, 50, 0, 100, 50, 0};       // time_to_recovery for cases 1-6.
 
-// Cell colours.
+// Colours.
 color susceptible = color(0, 255, 0);  // green
 color infected = color(255, 0, 0);     // red
 color recovered = color(0, 0, 255);    // blue
 color unoccupied = color(0);           // black
+color white = color(255);
 
 // Simulation parameters.
 int cells_per_side = 100;                        // cells per side of grid.
-int cell_size = 6;                          // size of a cell.
-boolean continuous = false;            // Whether to draw in continuous or single step mode.
+int cell_size = 6;                               // size of a cell.
+int graph_h = 200;                               // height of SIR graph.
+boolean continuous = false;                      // Whether to draw in continuous or single step mode.
 
-int curr_case = 0;                                       // The current case - 1.
+int curr_case = 0;                                                           // The current case - 1.
 color[][] curr_state = new color[cells_per_side][cells_per_side];            // Current state of each cell's agent.
 color[][] next_state = new color[cells_per_side][cells_per_side];            // Next state of each cell's agent.
 int[][] agent_time_to_recovery = new int[cells_per_side][cells_per_side];    // Time to recovery of each cell's agent.
 
+// Tracking SIR
+int[] s_cnt;
+int[] i_cnt;
+int[] r_cnt;
+int time;
+
 void setup() {
-  size(600, 800);  // cell_size * cells_per_side
+  size(600, 800);  // cell_size * cells_per_side; graph_h
   set_case(0);
 }
 
@@ -56,14 +64,22 @@ void set_case(int new_case) {
 
 // Fill grid based on current case parameters.
 void initialize() {
+  time = 0;
+  s_cnt = new int[1000]; 
+  i_cnt = new int[1000];
+  r_cnt = new int[1000];
+  
   continuous = false;
   for (int x = 0; x < cells_per_side; x++) {
     for (int y = 0; y < cells_per_side; y++) {
       if (random(1) < p_filled) {
-        curr_state[x][y] = susceptible;
         if (random(1) < p_infected) {
           curr_state[x][y] = infected;
+          i_cnt[0]++;
           agent_time_to_recovery[x][y] = time_to_recovery;
+        } else {
+          curr_state[x][y] = susceptible;
+          s_cnt[0]++;
         }
       } else {
         curr_state[x][y] = unoccupied;
@@ -74,7 +90,11 @@ void initialize() {
 
 // Update infections and locations of agents.
 void update() {
+  // Start with copy of current state.
   next_state = deep_copy(curr_state);
+  s_cnt[time + 1] = s_cnt[time];
+  i_cnt[time + 1] = i_cnt[time];
+  r_cnt[time + 1] = r_cnt[time];
   
   // Use a shuffled list to avoid anisotropic behaviour.
   int[][] shuffled_coordinates = shuffle_coordinates(cells_per_side, cells_per_side);
@@ -88,7 +108,7 @@ void update() {
       
       // Recover from infection.
       if (agent_time_to_recovery[x][y] == 0) {
-        next_state[x][y] = recovered;
+        recover(x, y);
       } else {
         agent_time_to_recovery[x][y]--;
       }
@@ -104,7 +124,9 @@ void update() {
     }
   }
   
+  // Move into new state.
   curr_state = deep_copy(next_state);
+  time++;
 }
 
 color[][] deep_copy(color[][] original) {
@@ -131,11 +153,23 @@ void infect_neighbors(int x, int y) {
       int yy = (y + yn + cells_per_side) % cells_per_side;
       
       if (random(1) < p_transmission && curr_state[xx][yy] == susceptible) {
-        next_state[xx][yy] = infected;
+        infect(xx, yy);
         agent_time_to_recovery[xx][yy] = time_to_recovery;
       }
     }
   }
+}
+
+void infect(int x, int y) {
+  next_state[x][y] = infected;
+  i_cnt[time + 1]++;
+  s_cnt[time + 1]--;
+}
+
+void recover(int x, int y) {
+  next_state[x][y] = recovered;
+  r_cnt[time + 1]++;
+  i_cnt[time + 1]--;
 }
 
 // Get the unoccupied (non-diagonal) neighbors of cell x, y.
@@ -210,6 +244,16 @@ int[][] shuffle_coordinates(int len_x, int len_y) {
 
 void draw() {
   background(unoccupied);
+  
+  draw_cell_grid();
+  draw_sir_graph();
+  
+  if (continuous) {
+    update(); 
+  }
+}
+
+void draw_cell_grid() {
   for (int x = 0; x < cells_per_side; x++) {
     for (int y = 0; y < cells_per_side; y++) {
       // Populate grid.
@@ -221,9 +265,56 @@ void draw() {
       }
     }
   }
-  if (continuous) {
-    update(); 
+}
+
+void draw_sir_graph() {
+  // Initialize graph.
+  fill(white);
+  int w = cell_size * cells_per_side;
+  int h = graph_h;
+  
+  // Graph begins the row after the cells.
+  int gridX = 0;
+  int gridY = cell_to_grid(cells_per_side);
+  
+  rect(gridX, gridY, w, h);
+  
+  // Fill graph.
+  noStroke();
+  for (int t = 0; t <= time; t++) {
+    int s = s_cnt[t];
+    int i = i_cnt[t];
+    int r = r_cnt[t];
+    
+    int s_y = sir_graph_y(s);
+    int i_y = sir_graph_y(i);
+    int r_y = sir_graph_y(r);
+    
+    fill(susceptible);
+    circle(t, s_y, cell_size);
+    fill(infected);
+    circle(t, i_y, cell_size);
+    fill(recovered);
+    circle(t, r_y, cell_size);
   }
+  stroke(0);
+}
+
+int sir_graph_y(int cnt) {
+  // Absolute values of all counts.
+  int s = s_cnt[time];
+  int i = i_cnt[time];
+  int r = r_cnt[time];
+  float pop = s + i + r;
+  
+  // Proportion of state represented.
+  float pct = cnt/pop;
+  int graph_y = round(graph_h * pct);
+    
+  // graph_y is from the bottom of the window. Convert to measuring from the top.
+  int grid_h = (cells_per_side * cell_size) + graph_h;
+  int grid_y = grid_h - graph_y;
+  return grid_y;
 }
 
 // Translate cell coordinates to grid coordinates.
