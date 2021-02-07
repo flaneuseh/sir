@@ -65,9 +65,10 @@ void set_case(int new_case) {
 // Fill grid based on current case parameters.
 void initialize() {
   time = 0;
-  s_cnt = new int[1000]; 
-  i_cnt = new int[1000];
-  r_cnt = new int[1000];
+  int graph_w = cell_size * cells_per_side;
+  s_cnt = new int[graph_w]; 
+  i_cnt = new int[graph_w];
+  r_cnt = new int[graph_w];
   
   continuous = false;
   for (int x = 0; x < cells_per_side; x++) {
@@ -86,12 +87,21 @@ void initialize() {
       }
     }
   }
+  
+  println("time: " + time);
+  println("s: " + s_cnt[time]);
+  println("i: " + i_cnt[time]);
+  println("r: " + r_cnt[time]);
 }
 
 // Update infections and locations of agents.
 void update() {
   // Start with copy of current state.
   next_state = deep_copy(curr_state);
+  if (time >= s_cnt.length - 1) {
+    time = s_cnt.length - 2;
+    shift_time_cnts();
+  }
   s_cnt[time + 1] = s_cnt[time];
   i_cnt[time + 1] = i_cnt[time];
   r_cnt[time + 1] = r_cnt[time];
@@ -127,6 +137,11 @@ void update() {
   // Move into new state.
   curr_state = deep_copy(next_state);
   time++;
+  
+  println("time: " + time);
+  println("s: " + s_cnt[time]);
+  println("i: " + i_cnt[time]);
+  println("r: " + r_cnt[time]);
 }
 
 color[][] deep_copy(color[][] original) {
@@ -152,7 +167,7 @@ void infect_neighbors(int x, int y) {
       int xx = (x + xn + cells_per_side) % cells_per_side;
       int yy = (y + yn + cells_per_side) % cells_per_side;
       
-      if (random(1) < p_transmission && curr_state[xx][yy] == susceptible) {
+      if (random(1) < p_transmission && next_state[xx][yy] == susceptible) {
         infect(xx, yy);
         agent_time_to_recovery[xx][yy] = time_to_recovery;
       }
@@ -286,9 +301,9 @@ void draw_sir_graph() {
     int i = i_cnt[t];
     int r = r_cnt[t];
     
-    int s_y = sir_graph_y(s);
-    int i_y = sir_graph_y(i);
-    int r_y = sir_graph_y(r);
+    int s_y = sir_graph_y(s, t);
+    int i_y = sir_graph_y(i, t);
+    int r_y = sir_graph_y(r, t);
     
     fill(susceptible);
     circle(t, s_y, cell_size);
@@ -300,11 +315,11 @@ void draw_sir_graph() {
   stroke(0);
 }
 
-int sir_graph_y(int cnt) {
+int sir_graph_y(float cnt, int t) {
   // Absolute values of all counts.
-  int s = s_cnt[time];
-  int i = i_cnt[time];
-  int r = r_cnt[time];
+  int s = s_cnt[t];
+  int i = i_cnt[t];
+  int r = r_cnt[t];
   float pop = s + i + r;
   
   // Proportion of state represented.
@@ -326,6 +341,15 @@ int cell_to_grid(int cell) {
 int grid_to_cell(int grid) {
   // Integer division results in the floor of the floating point value.
   return grid / cell_size; 
+}
+
+// Preserve only the most recent counts, so that the graph appears to scroll with time.
+void shift_time_cnts() {
+  for (int t = 1; t < s_cnt.length; t++) {
+    s_cnt[t-1] = s_cnt[t];
+    i_cnt[t-1] = i_cnt[t];
+    r_cnt[t-1] = r_cnt[t];
+  }
 }
 
 void keyPressed() {
