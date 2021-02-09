@@ -282,6 +282,9 @@ void draw_cell_grid() {
   }
 }
 
+// ONLY DRAW GRAPH TEXT ONCE FOR EACH KIND.
+// WILL WANT TO GRAB PERCENTAGES IN MAIN FN INSTEAD OF PLOTTING FN.
+// WANT A FN TO CONVERT FROM PLOT Y VALUE TO WINDOW Y VALUE.
 int graph_area_h = 250;
 void draw_sir_graph() {
   // Initialize graph.
