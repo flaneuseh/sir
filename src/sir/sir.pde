@@ -21,8 +21,8 @@ float[] p_filled_cases = new float[]{1.0, 1.0, 1.0, .3, .3, .3};        // p_fil
 // Spread parameters.
 float p_transmission = 1.0;                                             // Probability that an agent will infect a given neighbor.
 int time_to_recovery = 1;                                               // Time for an agent to recover from infection.
-float[] p_transmission_cases = new float[]{1.0, .5, 0, 1.0, .5, 0};     // p_transmission for cases 1-6.
-int[] time_to_recovery_cases = new int[]{100, 50, 0, 100, 50, 0};       // time_to_recovery for cases 1-6.
+float[] p_transmission_cases = new float[]{.05, .037, .041, .9, .5, .1};     // p_transmission for cases 1-6.
+int[] time_to_recovery_cases = new int[]{15, 13, 14, 100, 50, 10};       // time_to_recovery for cases 1-6.
 
 // Colours.
 color susceptible = color(0, 255, 0);  // green
@@ -34,7 +34,6 @@ color white = color(255);
 // Simulation parameters.
 int cells_per_side = 100;                        // cells per side of grid.
 int cell_size = 6;                               // size of a cell.
-int graph_h = 200;                               // height of SIR graph.
 boolean continuous = false;                      // Whether to draw in continuous or single step mode.
 
 int curr_case = 0;                                                           // The current case - 1.
@@ -49,7 +48,7 @@ int[] r_cnt;
 int time;
 
 void setup() {
-  size(600, 800);  // cell_size * cells_per_side; graph_h
+  size(600, 850);  // cell_size * cells_per_side; cell grid + sir graph
   set_case(0);
 }
 
@@ -59,6 +58,7 @@ void set_case(int new_case) {
   p_filled = p_filled_cases[curr_case];
   p_transmission = p_transmission_cases[curr_case];
   time_to_recovery = time_to_recovery_cases[curr_case];
+  println("New parameters: " + p_transmission + ", " + time_to_recovery);
   initialize();
 }
 
@@ -282,11 +282,12 @@ void draw_cell_grid() {
   }
 }
 
+int graph_area_h = 250;
 void draw_sir_graph() {
   // Initialize graph.
   fill(white);
   int w = cell_size * cells_per_side;
-  int h = graph_h;
+  int h = graph_area_h;
   
   // Graph begins the row after the cells.
   int gridX = 0;
@@ -301,21 +302,25 @@ void draw_sir_graph() {
     int i = i_cnt[t];
     int r = r_cnt[t];
     
-    int s_y = sir_graph_y(s, t);
-    int i_y = sir_graph_y(i, t);
-    int r_y = sir_graph_y(r, t);
-    
-    fill(susceptible);
-    circle(t, s_y, cell_size);
-    fill(infected);
-    circle(t, i_y, cell_size);
-    fill(recovered);
-    circle(t, r_y, cell_size);
+    plot(s, t, susceptible);
+    plot(i, t, infected);
+    plot(r, t, recovered);
   }
   stroke(0);
 }
 
-int sir_graph_y(float cnt, int t) {
+// Plotting parameters.
+int window_h = (cell_size * cells_per_side) + graph_area_h; // Height of entire window.
+int text_h = 10;                                   // Height of text labels.
+int graph_h = 250 - text_h;                        // Height of graph.
+int plot_size = 2;                                 // Size of plotted points.
+int buffer = plot_size/2;                          // Buffer between graph and delineating lines.
+int useable_graph_h = graph_h - buffer;            // Useable graph height.
+
+// Plot the state with count cnt at time t.
+void plot(float cnt, int t, color state) {
+  fill(state);
+  
   // Absolute values of all counts.
   int s = s_cnt[t];
   int i = i_cnt[t];
@@ -324,12 +329,24 @@ int sir_graph_y(float cnt, int t) {
   
   // Proportion of state represented.
   float pct = cnt/pop;
-  int graph_y = round(graph_h * pct);
-    
-  // graph_y is from the bottom of the window. Convert to measuring from the top.
-  int grid_h = (cells_per_side * cell_size) + graph_h;
-  int grid_y = grid_h - graph_y;
-  return grid_y;
+  int graph_y = round(useable_graph_h * pct);
+  
+  // graph_y is from the bottom of the graph. We need an absolute value in the window.
+  int window_y = window_h - text_h - buffer - graph_y;
+  
+  int text_x = 0;
+  if (state == susceptible) {
+    text_x = 100;
+  } else if (state == infected) {
+    text_x = 300;
+  } else if (state == recovered) {
+    text_x = 500;
+  }
+  int text_y = window_h - 2; // Text is at the very bottom of the window.
+  
+  int plot_size = cell_size/2;
+  circle(t, window_y, plot_size);
+  text(pct + "%", text_x, text_y);
 }
 
 // Translate cell coordinates to grid coordinates.
