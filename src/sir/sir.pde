@@ -6,12 +6,12 @@
 //  space bar - Toggle continuous simulation mode.
 //  s - Take a single simulation step and stop.
 //  digits 1 through 6 - re-initialize the cells based on one of six scenarios:
-//    1. No agent movement; infection spreads to most of population.
-//    2. No agent movement; infection quickly dies down, leaving most of the population unaffected.
-//    3. No agent movement; infection spreads to about half of the population.
-//    4. Continuous agent movement; infection spreads to most of population.
-//    5. Continuous agent movement; infection quickly dies down, leaving most of the population unaffected.
-//    6. Continuous agent movement; infection spreads to about half of the population.
+//    1. No agent movement; infection spreads to most of population. (>80%)
+//    2. No agent movement; infection quickly dies down, leaving most of the population unaffected. (<20%)
+//    3. No agent movement; infection spreads to about half of the population. (40%-60%)
+//    4. Continuous agent movement; infection spreads to most of population. (>80%)
+//    5. Continuous agent movement; infection quickly dies down, leaving most of the population unaffected. (<20%)
+//    6. Continuous agent movement; infection spreads to about half of the population. (40%-60%)
 
 // Initialization parameters.
 float p_filled = 1.0;                                                   // Probability that a cell is occupied. When p_filled == 1, there is no cell movement.
@@ -21,13 +21,13 @@ float[] p_filled_cases = new float[]{1.0, 1.0, 1.0, .3, .3, .3};        // p_fil
 // Spread parameters.
 float p_transmission = 1.0;                                             // Probability that an agent will infect a given neighbor.
 int time_to_recovery = 1;                                               // Time for an agent to recover from infection.
-float[] p_transmission_cases = new float[]{.05, .037, .041, .9, .5, .1};     // p_transmission for cases 1-6.
-int[] time_to_recovery_cases = new int[]{15, 13, 14, 100, 50, 10};       // time_to_recovery for cases 1-6.
+float[] p_transmission_cases = new float[]{.05, .035, .0413, .12, .08, .1};     // p_transmission for cases 1-6.
+int[] time_to_recovery_cases = new int[]{15, 13, 14, 30, 18, 20};       // time_to_recovery for cases 1-6.
 
 // Colours.
-color susceptible = color(0, 255, 0);  // green
-color infected = color(255, 0, 0);     // red
-color recovered = color(0, 0, 255);    // blue
+color susceptible = color(0, 200, 0);  // green
+color infected = color(200, 0, 0);     // red
+color recovered = color(0, 0, 200);    // blue
 color unoccupied = color(0);           // black
 color white = color(255);
 
@@ -76,8 +76,8 @@ void initialize() {
       if (random(1) < p_filled) {
         if (random(1) < p_infected) {
           curr_state[x][y] = infected;
-          i_cnt[0]++;
           agent_time_to_recovery[x][y] = time_to_recovery;
+          i_cnt[0]++;
         } else {
           curr_state[x][y] = susceptible;
           s_cnt[0]++;
@@ -89,6 +89,7 @@ void initialize() {
   }
   
   println("time: " + time);
+  println("population: " + (s_cnt[time] + i_cnt[time] + r_cnt[time]));
   println("s: " + s_cnt[time]);
   println("i: " + i_cnt[time]);
   println("r: " + r_cnt[time]);
@@ -123,13 +124,22 @@ void update() {
         agent_time_to_recovery[x][y]--;
       }
     }
-    
-    if (curr_state[x][y] != unoccupied) {
-      // Update location.
-      int[][] unoccupied_neighbors = get_unoccupied_neighbors(x, y);
-      if (unoccupied_neighbors.length > 0) {
-        int move_index = int(random(unoccupied_neighbors.length));
-        move_agent(new int[]{x, y}, unoccupied_neighbors[move_index]);
+  }
+  
+  // Movement after infection so that cells only infect neighbors that were present before movement.
+  // Don't bother attempting movement if p_filled is 1.
+  if (p_filled < 1) {
+    for (int i = 0; i < shuffled_coordinates.length; i++) {
+      int x = shuffled_coordinates[i][0];
+      int y = shuffled_coordinates[i][1];
+      
+      if (curr_state[x][y] != unoccupied) {
+        // Update location.
+        int[][] unoccupied_neighbors = get_unoccupied_neighbors(x, y);
+        if (unoccupied_neighbors.length > 0) {
+          int move_index = int(random(unoccupied_neighbors.length));
+          move_agent(new int[]{x, y}, unoccupied_neighbors[move_index]);
+        }
       }
     }
   }
@@ -139,6 +149,7 @@ void update() {
   time++;
   
   println("time: " + time);
+  println("population: " + (s_cnt[time] + i_cnt[time] + r_cnt[time]));
   println("s: " + s_cnt[time]);
   println("i: " + i_cnt[time]);
   println("r: " + r_cnt[time]);
@@ -167,9 +178,9 @@ void infect_neighbors(int x, int y) {
       int xx = (x + xn + cells_per_side) % cells_per_side;
       int yy = (y + yn + cells_per_side) % cells_per_side;
       
+      // Check value of next_state to ensure that the cell isn't infected twice.
       if (random(1) < p_transmission && next_state[xx][yy] == susceptible) {
         infect(xx, yy);
-        agent_time_to_recovery[xx][yy] = time_to_recovery;
       }
     }
   }
@@ -177,6 +188,7 @@ void infect_neighbors(int x, int y) {
 
 void infect(int x, int y) {
   next_state[x][y] = infected;
+  agent_time_to_recovery[x][y] = time_to_recovery;
   i_cnt[time + 1]++;
   s_cnt[time + 1]--;
 }
@@ -203,8 +215,10 @@ int[][] get_unoccupied_neighbors(int x, int y) {
       int xx = (x + xn + cells_per_side) % cells_per_side;
       int yy = (y + yn + cells_per_side) % cells_per_side;
       
-      // Check next_state values as another cell could've already moved into the unoccupied cell.
-      if ((curr_state[xx][yy] == unoccupied) && (next_state[xx][yy] == unoccupied)) {
+      // Move based on next state values to prevent 2 cells moving into the same space
+      // (and losing the agent). Agents may move into neighboring positions that are 
+      // vacated in the same timestep.
+      if (next_state[xx][yy] == unoccupied) {
         untrimmed_unoccupied_neighbors[cnt] = new int[]{xx, yy};
         cnt++;
       }
@@ -226,10 +240,11 @@ void move_agent(int[] curr_pos, int[] next_pos) {
   int next_x = next_pos[0];
   int next_y = next_pos[1];
   
-  next_state[next_x][next_y] = curr_state[curr_x][curr_y];
-  next_state[curr_x][curr_y] = unoccupied;
-  // Be sure to move the time_to_recovery with the agent.
+  // Move state and time to recovery; set current location to unoccupied.
+  next_state[next_x][next_y] = next_state[curr_x][curr_y]; // We move the next state instead of the current state 
+                                                           // because infections happen before movement.
   agent_time_to_recovery[next_x][next_y] = agent_time_to_recovery[curr_x][curr_y]; 
+  next_state[curr_x][curr_y] = unoccupied;
 }
 
 // Shuffle coordinate values for a grid sized x * y and 
@@ -282,9 +297,6 @@ void draw_cell_grid() {
   }
 }
 
-// ONLY DRAW GRAPH TEXT ONCE FOR EACH KIND.
-// WILL WANT TO GRAB PERCENTAGES IN MAIN FN INSTEAD OF PLOTTING FN.
-// WANT A FN TO CONVERT FROM PLOT Y VALUE TO WINDOW Y VALUE.
 int graph_area_h = 250;
 void draw_sir_graph() {
   // Initialize graph.
@@ -317,8 +329,8 @@ int window_h = (cell_size * cells_per_side) + graph_area_h; // Height of entire 
 int text_h = 10;                                   // Height of text labels.
 int graph_h = 250 - text_h;                        // Height of graph.
 int plot_size = 2;                                 // Size of plotted points.
-int buffer = plot_size/2;                          // Buffer between graph and delineating lines.
-int useable_graph_h = graph_h - buffer;            // Useable graph height.
+int buffer = cell_size;                            // Buffer between graph and delineating lines.
+int useable_graph_h = graph_h - (2 * buffer);            // Useable graph height.
 
 // Plot the state with count cnt at time t.
 void plot(float cnt, int t, color state) {
@@ -337,19 +349,22 @@ void plot(float cnt, int t, color state) {
   // graph_y is from the bottom of the graph. We need an absolute value in the window.
   int window_y = window_h - text_h - buffer - graph_y;
   
-  int text_x = 0;
-  if (state == susceptible) {
-    text_x = 100;
-  } else if (state == infected) {
-    text_x = 300;
-  } else if (state == recovered) {
-    text_x = 500;
-  }
-  int text_y = window_h - 2; // Text is at the very bottom of the window.
-  
   int plot_size = cell_size/2;
   circle(t, window_y, plot_size);
-  text(pct + "%", text_x, text_y);
+  
+  if (t == time) { // Only label percents at the current time.
+  
+    int text_x = 0;
+    if (state == susceptible) {
+      text_x = 75;
+    } else if (state == infected) {
+      text_x = 275;
+    } else if (state == recovered) {
+      text_x = 475;
+    }
+    int text_y = window_h - 2; // Text is at the very bottom of the window.
+    text(pct + "%", text_x, text_y);
+  }
 }
 
 // Translate cell coordinates to grid coordinates.
